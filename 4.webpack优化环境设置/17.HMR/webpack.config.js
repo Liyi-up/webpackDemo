@@ -1,0 +1,138 @@
+/**
+ * HMR：hot module replacement 热模块替换/模块热替换
+ *  作用:一个模块发生变化，只会重新打包一个模块(而不是打包所有模块)
+ *  极大提升构建速度
+ *  样式文件:可以使用HMR功能:因为style-loader内部实现了~
+ *  js文件:默认不能使用HMR功能--->需要修改js代码，添加支持HMR功能的代码
+ *   注意:HMR功能对js处理的处理，只能处理非入口js文件
+ *  html文件:默认不适用HMR功能，同时会导致问题:html文件不能热更新
+ *  解决:将html添加到entry入口中便于开启html的HMR功能(不用做HMR文件)
+ */
+const {resolve} = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const OptimizeCssAssetsWebpackPlugin = require('optimize-css-assets-webpack-plugin');
+
+// 定义环境变量:决定使用 browserslist 的哪个模式配置 默认:production
+process.env.NODE_ENV = 'production';
+// 复用loader
+
+module.exports = {
+
+    entry: ['./src/index.js','./src/index.html'], //将html添加到入口中便于开启html的HMR功能
+    output: {
+        publicPath: './',
+        filename: 'built.js',
+        path: resolve(__dirname, 'build')
+    },
+    module: {
+        rules: [
+            //处理less与css
+            {
+                test: /\.(less|css)$/,
+                use: [
+                    // 抽取css文件
+                    MiniCssExtractPlugin.loader,
+                    'css-loader',
+                    { // css兼容处理
+                        loader: 'postcss-loader',
+                    },
+                    'less-loader'
+                ]
+            },
+            /**
+             * 正常情况下，一个文件只能被一个loader处理
+             * 当一个文件被多个loader处理，那么一定要指定loader的执行先后顺序
+             * 先执行eslint 在执行babel
+             */
+            { //js语法检查
+                // 需要在package.json配置eslintConfig --->airbnb
+                test: /\.js$/,
+                exclude: /node_modules/,
+                enforce: 'pre', //优先执行
+                loader: 'eslint-loader',
+                options: {
+                    fix: true //自动修复语法不规范
+                }
+            },
+            { //js兼容性处理
+                test: /\.js$/,
+                exclude: /node_modules/,
+                loader: 'babel-loader',
+                options: { //具体规则
+                    presets: [ //预设置
+                        [
+                            '@babel/preset-env', //基础语法兼容
+                            {//按需全兼容
+                                useBuiltIns: 'usage',
+                                corejs: {version: 3},
+                                targets: { //指定兼容最低版本
+                                    firefox: '60',
+                                    ie: '9',
+                                    safari: '10',
+                                    edge: '17'
+                                }
+                            }
+                        ]
+                    ]
+                }
+            },
+            { //处理图片 默认使用es模块化处理
+                test: /\.(png|jpg|gif)$/,
+                loader: 'url-loader',
+                options: {
+                    limit: 8 * 1024,
+                    name: '[hash:10].[ext]',
+                    outputPath: 'images',
+                    esModule: false //关闭es模块化
+                }
+            },
+            {//处理html中的图片 使用的是commonjs模块化处理
+                test: /.html$/,
+                loader: 'html-loader',
+            },
+            { //将一些其他文件统一打包到指定目录
+                exclude: /\.(html|css|less|jpg|png|gif|js)$/,
+                loader: 'file-loader',
+                options: {
+                    output:'media'
+                }
+            }
+
+        ]
+    },
+    plugins: [
+        new HtmlWebpackPlugin(
+            {
+                template: './src/index.html',
+                // 压缩html代码
+                minify: {
+                    // 移除空格
+                    collapseWhitespace: true,
+                    // 移除注释
+                    removeComments: true
+
+                }
+            }
+        ),
+        // 抽取css
+        new MiniCssExtractPlugin(
+            {filename: 'styles/index.css'}
+        ),
+        // 压缩css
+        new OptimizeCssAssetsWebpackPlugin()
+
+    ],
+    // 生产环境下，自动压缩js代码
+    mode: 'production',
+    devServer: {
+        contentBase:resolve(__dirname,'build'),
+        compress:true,
+        port:3000,
+        open:true,
+        // 开启HMR功能
+        // 当修改webpack配置必须重启webpack服务
+        hot:true
+    }
+};
+
